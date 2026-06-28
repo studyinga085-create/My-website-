@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feature World: Random Chaos Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+        /* Notification area */
+        #notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 100;
+            border: 2px solid #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+        }
+        #notification.show {
+            opacity: 1;
+        }
+        /* Directional controls */
+        #controls-left {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            z-index: 100;
+            display: grid;
+            grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 60px 60px;
+            gap: 5px;
+        }
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 12px;
+            color: #fff;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active {
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(0.95);
+        }
+        .control-btn.up { grid-column: 2; grid-row: 1; }
+        .control-btn.left { grid-column: 1; grid-row: 2; }
+        .control-btn.down { grid-column: 2; grid-row: 2; }
+        .control-btn.right { grid-column: 3; grid-row: 2; }
+        /* Jump button */
+        #jump-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 100, 100, 0.3);
+            border: 2px solid rgba(255, 100, 100, 0.6);
+            border-radius: 50%;
+            color: #fff;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #jump-btn:active {
+            background: rgba(255, 100, 100, 0.6);
+            transform: scale(0.95);
+        }
+        /* Instructions overlay */
+        #instructions {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 30px 40px;
+            border-radius: 15px;
+            text-align: center;
+            z-index: 200;
+            border: 2px solid #fff;
+        }
+        #instructions h2 {
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+        #instructions p {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        #start-btn {
+            margin-top: 20px;
+            padding: 10px 30px;
+            background: #4CAF50;
+            border: none;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #start-btn:hover {
+            background: #45a049;
+        }
+        /* Effect indicator */
+        #effect-indicator {
+            position: fixed;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="world"></canvas>
+    </div>
+    
+    <div id="notification"></div>
+    <div id="effect-indicator"></div>
+    
+    <div id="controls-left">
+        <div class="control-btn up" data-dir="up">▲</div>
+        <div class="control-btn left" data-dir="left">◀</div>
+        <div class="control-btn down" data-dir="down">▼</div>
+        <div class="control-btn right" data-dir="right">▶</div>
+    </div>
+    
+    <div id="jump-btn">JUMP</div>
+    
+    <div id="instructions">
+        <h2>Feature World: Random Chaos Edition</h2>
+        <p>🎮 Use directional buttons or WASD/Arrow keys to move</p>
+        <p>⬆️ Press Space or Jump button to jump</p>
+        <p>🎲 Touch colorful objects for random effects!</p>
+        <p>☁️ Explore the rolling terrain and blue sky!</p>
+        <button id="start-btn">Start Exploring!</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('world');
+        const ctx = canvas.getContext('2d');
+        const notification = document.getElementById('notification');
+        const effectIndicator = document.getElementById('effect-indicator');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Game state
+        let gameRunning = false;
+        let camera = { x: 0, y: 0 };
+        
+        // Character
+        const character = {
+            x: 0,
+            y: 0,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            width: 30,
+            height: 50,
+            depth: 20,
+            onGround: false,
+            speed: 3,
+            baseSpeed: 3,
+            jumpPower: 12,
+            invisible: false,
+            invisibleTimer: 0,
+            speedTimer: 0,
+            slowTimer: 0,
+            facing: 1 // 1 = right, -1 = left
+        };
+        
+        // Terrain
+        const terrain = {
+            width: 2000,
+            depth: 2000,
+            segments: 40,
+            heights: []
+        };
+        
+        // Generate terrain heights
+        function generateTerrain() {
+            terrain.heights = [];
+            for (let x = 0; x <= terrain.segments; x++) {
+                terrain.heights[x] = [];
+                for (let z = 0; z <= terrain.segments; z++) {
+                    const wx = (x / terrain.segments) * terrain.width - terrain.width / 2;
+                    const wz = (z / terrain.segments) * terrain.depth - terrain.depth / 2;
+                    terrain.heights[x][z] = Math.sin(wx * 0.01) * 30 + 
+                                              Math.cos(wz * 0.01) * 30 + 
+                                              Math.sin(wx * 0.03 + wz * 0.02) * 10;
+                }
+            }
+        }
+        generateTerrain();
+        
+        // Get terrain height at position
+        function getTerrainHeight(x, z) {
+            const halfW = terrain.width / 2;
+            const halfD = terrain.depth / 2;
+            const nx = (x + halfW) / terrain.width * terrain.segments;
+            const nz = (z + halfD) / terrain.depth * terrain.segments;
+            
+            const ix = Math.floor(nx);
+            const iz = Math.floor(nz);
+            const fx = nx - ix;
+            const fz = nz - iz;
+            
+            if (ix < 0 || ix >= terrain.segments || iz < 0 || iz >= terrain.segments) {
+                return -100;
+            }
+            
+            const h00 = terrain.heights[ix][iz];
+            const h10 = terrain.heights[ix + 1][iz];
+            const h01 = terrain.heights[ix][iz + 1];
+            const h11 = terrain.heights[ix + 1][iz + 1];
+            
+            return h00 * (1 - fx) * (1 - fz) + 
+                   h10 * fx * (1 - fz) + 
+                   h01 * (1 - fx) * fz + 
+                   h11 * fx * fz;
+        }
+        
+        // Random objects
+        const objects = [];
+        const objectTypes = ['cube', 'sphere', 'pyramid', 'torus', 'cylinder'];
+        const objectColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'];
+        const effects = [
+            { name: 'Speed Up!', type: 'speed', duration: 5000, color: '#FF6B6B' },
+            { name: 'Slow Down!', type: 'slow', duration: 5000, color: '#4ECDC4' },
+            { name: 'Invisibility!', type: 'invisible', duration: 4000, color: '#BB8FCE' },
+            { name: 'Super Jump!', type: 'superjump', duration: 4000, color: '#F7DC6F' },
+            { name: 'Gravity Flip!', type: 'gravity', duration: 3000, color: '#FFA07A' },
+            { name: 'Tiny Mode!', type: 'tiny', duration: 4000, color: '#98D8C8' },
+            { name: 'Giant Mode!', type: 'giant', duration: 4000, color: '#45B7D1' },
+            { name: 'Chaos Spin!', type: 'spin', duration: 3000, color: '#FF6B6B' }
+        ];
+        
+        function generateObjects() {
+            objects.length = 0;
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.random() - 0.5) * terrain.width * 0.8;
+                const z = (Math.random() - 0.5) * terrain.depth * 0.8;
+                const y = getTerrainHeight(x, z) + 20 + Math.random() * 30;
+                
+                objects.push({
+                    x: x,
+                    y: y,
+                    z: z,
+                    type: objectTypes[Math.floor(Math.random() * objectTypes.length)],
+                    color: objectColors[Math.floor(Math.random() * objectColors.length)],
+                    size: 15 + Math.random() * 20,
+                    rotation: Math.random() * Math.PI * 2,
+                    rotationSpeed: (Math.random() - 0.5) * 0.05,
+                    bobOffset: Math.random() * Math.PI * 2,
+                    bobSpeed: 0.02 + Math.random() * 0.03,
+                    effect: effects[Math.floor(Math.random() * effects.length)],
+                    collected: false,
+                    collectAnim: 0
+                });
+            }
+        }
+        generateObjects();
+        
+        // Clouds
+        const clouds = [];
+        for (let i = 0; i < 20; i++) {
+            clouds.push({
+                x: (Math.random() - 0.5) * 3000,
+                y: -200 - Math.random() * 200,
+                z: (Math.random() - 0.5) * 3000,
+                width: 80 + Math.random() * 120,
+                height: 30 + Math.random() * 40,
+                speed: 0.2 + Math.random() * 0.5
+            });
+        }
+        
+        // Input handling
+        const keys = {};
+        let jumpPressed = false;
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === ' ' || e.key === 'ArrowUp') {
+                jumpPressed = true;
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+            if (e.key === ' ' || e.key === 'ArrowUp') {
+                jumpPressed = false;
+            }
+        });
+        
+        // Touch controls
+        const touchState = { up: false, down: false, left: false, right: false };
+        
+        document.querySelectorAll('.control-btn').forEach(btn => {
+            const dir = btn.dataset.dir;
+            
+            btn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                touchState[dir] = true;
+            });
+            btn.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                touchState[dir] = false;
+            });
+            btn.addEventListener('mousedown', (e) => {
+                touchState[dir] = true;
+            });
+            btn.addEventListener('mouseup', (e) => {
+                touchState[dir] = false;
+            });
+        });
+        
+        const jumpBtn = document.getElementById('jump-btn');
+        jumpBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jumpPressed = true;
+        });
+        jumpBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            jumpPressed = false;
+        });
+        jumpBtn.addEventListener('mousedown', () => jumpPressed = true);
+        jumpBtn.addEventListener('mouseup', () => jumpPressed = false);
+        
+        // Start game
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('instructions').style.display = 'none';
+            gameRunning = true;
+            character.x = 0;
+            character.z = 0;
+            character.y = getTerrainHeight(0, 0) + 50;
+        });
+        
+        // Show notification
+        let notificationTimer = null;
+        function showNotification(text, color) {
+            notification.textContent = text;
+            notification.style.borderColor = color;
+            notification.style.boxShadow = `0 0 20px ${color}80`;
+            notification.classList.add('show');
+            
+            if (notificationTimer) clearTimeout(notificationTimer);
+            notificationTimer = setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+        
+        // Apply effect
+        let currentEffect = null;
+        let effectTimer = null;
+        
+        function applyEffect(effect) {
+            showNotification(effect.name, effect.color);
+            currentEffect = effect;
+            
+            // Reset previous effects
+            character.speed = character.baseSpeed;
+            character.invisible = false;
+            character.width = 30;
+            character.height = 50;
+            
+            switch (effect.type) {
+                case 'speed':
+                    character.speed = character.baseSpeed * 2.5;
+                    break;
+                case 'slow':
+                    character.speed = character.baseSpeed * 0.3;
+                    break;
+                case 'invisible':
+                    character.invisible = true;
+                    break;
+                case 'superjump':
+                    character.jumpPower = 20;
+                    break;
+                case 'gravity':
+                    // Handled in update
+                    break;
+                case 'tiny':
+                    character.width = 15;
+                    character.height = 25;
+                    break;
+                case 'giant':
+                    character.width = 60;
+                    character.height = 100;
+                    break;
+                case 'spin':
+                    // Handled in update
+                    break;
+            }
+            
+            effectIndicator.textContent = `Active: ${effect.name}`;
+            effectIndicator.style.color = effect.color;
+            
+            if (effectTimer) clearTimeout(effectTimer);
+            effectTimer = setTimeout(() => {
+                currentEffect = null;
+                character.speed = character.baseSpeed;
+                character.invisible = false;
+                character.jumpPower = 12;
+                character.width = 30;
+                character.height = 50;
+                effectIndicator.textContent = '';
+            }, effect.duration);
+        }
+        
+        // 3D projection
+        function project(x, y, z) {
+            const fov = 600;
+            const distance = 400;
+            const scale = fov / (fov + z + distance);
+            return {
+                x: canvas.width / 2 + (x - camera.x) * scale,
+                y: canvas.height / 2 + (y - camera.y) * scale,
+                scale: scale
+            };
+        }
+        
+        // Draw functions
+        function drawSky() {
+            // Blue sky gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#1a237e');
+            gradient.addColorStop(0.3, '#3949ab');
+            gradient.addColorStop(0.6, '#64b5f6');
+            gradient.addColorStop(1, '#e3f2fd');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        function drawCloud(cloud) {
+            const pos = project(cloud.x, cloud.y, cloud.z);
+            if (pos.scale <= 0) return;
+            
+            const w = cloud.width * pos.scale;
+            const h = cloud.height * pos.scale;
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.beginPath();
+            ctx.ellipse(pos.x, pos.y, w / 2, h / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Cloud puffs
+            ctx.beginPath();
+            ctx.ellipse(pos.x - w * 0.3, pos.y + h * 0.1, w * 0.35, h * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.ellipse(pos.x + w * 0.3, pos.y + h * 0.1, w * 0.35, h * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.ellipse(pos.x, pos.y - h * 0.2, w * 0.4, h * 0.35, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        function drawTerrain() {
+            const halfW = terrain.width / 2;
+            const halfD = terrain.depth / 2;
+            
+            // Draw terrain as wireframe/grid
+            ctx.strokeStyle = 'rgba(100, 200, 100, 0.3)';
+            ctx.lineWidth = 1;
+            
+            for (let x = 0; x < terrain.segments; x++) {
+                for (let z = 0; z < terrain.segments; z++) {
+                    const wx1 = (x / terrain.segments) * terrain.width - halfW;
+                    const wz1 = (z / terrain.segments) * terrain.depth - halfD;
+                    const wx2 = ((x + 1) / terrain.segments) * terrain.width - halfW;
+                    const wz2 = ((z + 1) / terrain.segments) * terrain.depth - halfD;
+                    
+                    const h00 = terrain.heights[x][z];
+                    const h10 = terrain.heights[x + 1][z];
+                    const h01 = terrain.heights[x][z + 1];
+                    const h11 = terrain.heights[x + 1][z + 1];
+                    
+                    const p00 = project(wx1, h00, wz1);
+                    const p10 = project(wx2, h10, wz1);
+                    const p01 = project(wx1, h01, wz2);
+                    const p11 = project(wx2, h11, wz2);
+                    
+                    if (p00.scale <= 0 || p10.scale <= 0 || p01.scale <= 0 || p11.scale <= 0) continue;
+                    
+                    // Color based on height
+                    const avgH = (h00 + h10 + h01 + h11) / 4;
+                    const greenIntensity = Math.min(255, Math.max(100, 150 + avgH));
+                    ctx.fillStyle = `rgba(50, ${greenIntensity}, 50, 0.6)`;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(p00.x, p00.y);
+                    ctx.lineTo(p10.x, p10.y);
+                    ctx.lineTo(p11.x, p11.y);
+                    ctx.lineTo(p01.x, p01.y);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                }
+            }
+        }
+        
+        function drawChara
